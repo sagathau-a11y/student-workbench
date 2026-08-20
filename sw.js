@@ -1,5 +1,5 @@
 /* 学员管理工作台 Service Worker —— 离线缓存 + 通知点击 */
-const CACHE = "smw-v1";
+const CACHE = "smw-v2";  // 版本升级：v2 强制旧缓存作废，部署后手机自动换新版
 const ASSETS = [".", "index.html", "styles.css", "app.js", "manifest.webmanifest", "icon-192.png", "icon-512.png"];
 
 self.addEventListener("install", e => {

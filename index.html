@@ -98,8 +98,13 @@
         <input id="sf-name" type="text" placeholder="学员姓名" />
       </label>
       <label class="field">
-        <span>拼写量</span>
-        <input id="sf-spelling" type="text" placeholder="如 20 词 / 课内带拼" />
+        <span>每节课学词量</span>
+        <input id="sf-words" type="text" placeholder="如 20 词 / 每课" />
+      </label>
+      <div class="group-label">其他特殊需求</div>
+      <label class="field">
+        <span>拼写量（可选）</span>
+        <input id="sf-spellCheck" type="text" placeholder="如 15 词 / 课内带拼" />
       </label>
       <label class="field switch">
         <span>带阅读</span>
@@ -134,32 +139,68 @@
       <button class="icon-btn" data-close>✕</button>
     </div>
     <div class="sheet-body">
-      <label class="field">
-        <span>正课时间 <i>*</i></span>
-        <input id="ss-class" type="datetime-local" />
-      </label>
-      <label class="field">
-        <span>抗遗忘 ①</span>
-        <input id="ss-r0" type="datetime-local" />
-      </label>
-      <label class="field">
-        <span>抗遗忘 ②</span>
-        <input id="ss-r1" type="datetime-local" />
-      </label>
-      <label class="field">
-        <span>抗遗忘 ③</span>
-        <input id="ss-r2" type="datetime-local" />
-      </label>
+      <div class="field">
+        <span>排课方式</span>
+        <div class="seg" id="ss-mode">
+          <button type="button" class="seg-btn active" data-mode="once">不重复</button>
+          <button type="button" class="seg-btn" data-mode="weekly">每周同一天</button>
+          <button type="button" class="seg-btn" data-mode="days">每周多天循环</button>
+        </div>
+      </div>
+      <div id="ss-fields-once">
+        <label class="field">
+          <span>正课时间 <i>*</i></span>
+          <input id="ss-class" type="datetime-local" />
+        </label>
+        <label class="field">
+          <span>抗遗忘 ①</span>
+          <input id="ss-r0" type="datetime-local" />
+        </label>
+        <label class="field">
+          <span>抗遗忘 ②</span>
+          <input id="ss-r1" type="datetime-local" />
+        </label>
+        <label class="field">
+          <span>抗遗忘 ③</span>
+          <input id="ss-r2" type="datetime-local" />
+        </label>
+        <p class="hint" id="ss-once-hint" hidden>每周同一天：到点自动顺延到下周，编辑时可选择「仅本周临时改期」。</p>
+      </div>
+      <div id="ss-fields-days" class="hidden">
+        <label class="field">
+          <span>每周上课日 <i>*</i>（可多选）</span>
+          <div class="daychips" id="ss-days">
+            <button type="button" class="chip" data-d="1">周一</button>
+            <button type="button" class="chip" data-d="2">周二</button>
+            <button type="button" class="chip" data-d="3">周三</button>
+            <button type="button" class="chip" data-d="4">周四</button>
+            <button type="button" class="chip" data-d="5">周五</button>
+            <button type="button" class="chip" data-d="6">周六</button>
+            <button type="button" class="chip" data-d="0">周日</button>
+          </div>
+        </label>
+        <label class="field">
+          <span>每天上课时间 <i>*</i></span>
+          <input id="ss-dayTime" type="time" value="18:00" />
+        </label>
+        <div class="group-label">抗遗忘（课后 N 小时自动安排）</div>
+        <label class="field">
+          <span>抗遗忘 ① 课后 <input id="ss-d0" type="number" min="0" step="0.5" class="inline-num" /> 小时</span>
+        </label>
+        <label class="field">
+          <span>抗遗忘 ② 课后 <input id="ss-d1" type="number" min="0" step="0.5" class="inline-num" /> 小时</span>
+        </label>
+        <label class="field">
+          <span>抗遗忘 ③ 课后 <input id="ss-d2" type="number" min="0" step="0.5" class="inline-num" /> 小时</span>
+        </label>
+        <p class="hint">例：①填 2 → 每次正课后 2 小时提醒复习。合并开启时只按 ① 安排。</p>
+      </div>
       <label class="field switch">
         <span>抗遗忘合并（三次合一）</span>
         <input id="ss-merged" type="checkbox" class="switch-input" />
       </label>
-      <label class="field switch">
-        <span>每周重复（自动顺延到下周）</span>
-        <input id="ss-weekly" type="checkbox" class="switch-input" />
-      </label>
       <label class="field">
-        <span>本节课单词量</span>
+        <span>每节课学词量</span>
         <input id="ss-words" type="text" placeholder="如 15 个" inputmode="numeric" />
       </label>
     </div>
@@ -197,7 +238,7 @@
     </div>
     <div class="sheet-body">
       <p class="hint">每行一位学员，用逗号分隔（中文逗号也行）。列顺序固定：</p>
-      <p class="hint" style="font-family:monospace;user-select:all">姓名, 正课, 抗遗忘1, 抗遗忘2, 抗遗忘3, 合并, 单词量, 拼写量, 带阅读, 重发音, 要反馈, 备注, 每周重复(可选)</p>
+      <p class="hint" style="font-family:monospace;user-select:all">姓名, 正课, 抗遗忘1, 抗遗忘2, 抗遗忘3, 合并, 每节课学词量, 拼写量, 带阅读, 重发音, 要反馈, 备注, 每周重复(可选)</p>
       <p class="hint">时间可写「周三 15:00」（自动取本周/下个周三）或「2026-03-20 15:00」；合并/阅读/发音/反馈写「是」或「否」。空白列留空即可。示例：</p>
       <p class="hint" style="font-family:monospace;user-select:all">小明, 周三 15:00, 周三 18:00, 周四 18:00, 周五 18:00, 否, 20, 15, 是, 是, 是, 家长关注发音</p>
       <textarea id="bk-text" rows="9" placeholder="把学员信息粘贴到这里，每行一位…" style="width:100%;background:var(--surface-2);border:1px solid var(--line);color:var(--text);border-radius:10px;padding:11px;font-size:14px;font-family:inherit;line-height:1.6"></textarea>

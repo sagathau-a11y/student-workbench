@@ -19,6 +19,12 @@
       const raw = localStorage.getItem(STORE_KEY);
       if (raw) {
         const d = JSON.parse(raw);
+        // 旧数据迁移：spelling（旧拼写量）→ spellCheck；wordsPerLesson 需用户重填
+        (d.students || []).forEach(s => {
+          if (s.spelling !== undefined && s.wordsPerLesson === undefined && s.spellCheck === undefined) {
+            s.spellCheck = s.spelling;
+          }
+        });
         return { students: d.students || [], settings: d.settings || defaultSettings() };
       }
     } catch (e) { console.warn("读取失败", e); }
@@ -117,9 +123,12 @@
       if (reviews.some(Boolean)) session.reviews = reviews;
       session.merged = boolOf(cols[5]);
       session.weekly = boolOf(cols[12]); // 第13列：每周重复（可选）
-      if (cols[6]) session.words = cols[6];
+      if (cols[6]) session.words = cols[6];   // 每节课学词量（课次）
       items.push({
-        name, spelling: cols[7] || "", withReading: boolOf(cols[8]),
+        name,
+        wordsPerLesson: cols[6] || "",        // 每节课学词量（学生档案默认）
+        spellCheck: cols[7] || "",            // 拼写量（特殊需求，可选）
+        withReading: boolOf(cols[8]),
         emphasizePronunciation: boolOf(cols[9]), needFeedback: boolOf(cols[10]), notes: cols[11] || "", session
       });
     });
@@ -130,7 +139,8 @@
     if (!items.length) { toast("没解析到学员" + (errors.length ? "：" + errors[0] : "，检查格式")); return 0; }
     items.forEach(it => {
       const st = { id: uid(), color: ACCENTS[state.students.length % ACCENTS.length], sessions: [],
-        name: it.name, spelling: it.spelling, withReading: it.withReading,
+        name: it.name, wordsPerLesson: it.wordsPerLesson, spellCheck: it.spellCheck,
+        withReading: it.withReading,
         emphasizePronunciation: it.emphasizePronunciation, needFeedback: it.needFeedback, notes: it.notes };
       if (it.session && it.session.classTime) {
         st.sessions.push({ id: uid(), classTime: it.session.classTime, reviews: it.session.reviews || ["","",""], merged: !!it.session.merged, weekly: !!it.session.weekly, words: it.session.words || "" });
@@ -144,9 +154,35 @@
 
   // ---------- 事件建模 ----------
   // 把一个 session 展开为若干提醒事件
+  function sessionMode(se) { return se.mode || (se.weekly ? "weekly" : "once"); }
   function eventsOf(student, session) {
     const now = Date.now();
     const out = [];
+    if (sessionMode(session) === "days") {
+      // 每周多天循环：展开未来 14 天内所有选中上课日的正课 + 抗遗忘（课后偏移）
+      const days = session.days || [];
+      const parts = String(session.dayTime || "18:00").split(":").map(Number);
+      const hh = parts[0] || 18, mm = parts[1] || 0;
+      const offsets = (session.offsets || [0, 24, 48]).map(x => Number(x) || 0);
+      for (let i = 0; i < 14; i++) {
+        const d = new Date(now);
+        d.setDate(d.getDate() + i);
+        if (!days.includes(d.getDay())) continue;
+        const cls = new Date(d); cls.setHours(hh, mm, 0, 0);
+        if (cls.getTime() < now - 60000) continue; // 今天该时间已过 → 跳过
+        out.push({ student, session, type: "class", label: "正课", time: cls, color: "var(--primary)" });
+        if (session.merged) {
+          const r = new Date(cls.getTime() + offsets[0] * 3600000);
+          out.push({ student, session, type: "merged", label: "抗遗忘（合并）", time: r, color: "var(--warn)" });
+        } else {
+          offsets.forEach((off, idx) => {
+            const r = new Date(cls.getTime() + off * 3600000);
+            out.push({ student, session, type: "review" + idx, label: `抗遗忘 ${"①②③"[idx]}`, time: r, color: "var(--primary-2)" });
+          });
+        }
+      }
+      return out;
+    }
     const cls = classOccurrence(session, now);
     if (cls) out.push({ student, session, type: "class", label: "正课", time: cls, color: "var(--primary)" });
     const reviews = reviewOccurrences(session, now);
@@ -266,7 +302,8 @@
     list.innerHTML = state.students.map(st => {
       const next = nextEventFor(st);
       const tags = [];
-      if (st.spelling) tags.push(`<span class="tag on">拼写 ${esc(st.spelling)}</span>`);
+      if (st.wordsPerLesson) tags.push(`<span class="tag on">学词 ${esc(st.wordsPerLesson)}</span>`);
+      if (st.spellCheck) tags.push(`<span class="tag on">拼写 ${esc(st.spellCheck)}</span>`);
       if (st.withReading) tags.push(`<span class="tag on">带阅读</span>`);
       if (st.emphasizePronunciation) tags.push(`<span class="tag on">重发音</span>`);
       if (st.needFeedback) tags.push(`<span class="tag on">要反馈</span>`);
@@ -323,7 +360,8 @@
     const body = $("#detailBody");
     const prof = [];
     prof.push(`<div class="session-sub">姓名：${esc(st.name)}</div>`);
-    if (st.spelling) prof.push(`<div class="session-sub">拼写量：${esc(st.spelling)}</div>`);
+    if (st.wordsPerLesson) prof.push(`<div class="session-sub">每节课学词量：${esc(st.wordsPerLesson)}</div>`);
+    if (st.spellCheck) prof.push(`<div class="session-sub">拼写量：${esc(st.spellCheck)}</div>`);
     prof.push(`<div class="session-sub">带阅读：${st.withReading ? "是" : "否"} ｜ 重发音：${st.emphasizePronunciation ? "是" : "否"} ｜ 课后反馈：${st.needFeedback ? "是" : "否"}</div>`);
     if (st.notes) prof.push(`<div class="session-sub">备注：${esc(st.notes)}</div>`);
     let html = `<div class="card" style="box-shadow:none;margin-bottom:10px">${prof.join("")}</div>`;
@@ -331,16 +369,27 @@
     if (!st.sessions.length) html += `<p class="muted" style="padding:6px 2px">还没有排课，点下方「+ 课次」添加。</p>`;
     st.sessions.slice().sort((a, b) => parseDT(a.classTime) - parseDT(b.classTime)).forEach(se => {
       const cls = parseDT(se.classTime);
-      const revs = (se.reviews || []).map(parseDT);
-      const revTxt = se.merged
-        ? `抗遗忘（合并）· ${fmtDT(revs[0])}`
-        : `抗遗忘：${revs.map((d, i) => `${"①②③"[i]} ${fmtTime(d)}`).join(" / ")}`;
-      const clsTitle = se.weekly ? (`每${WEEK[parseDT(se.classTime).getDay()]} ${fmtTime(parseDT(se.classTime))} 🔁`) : fmtDT(cls);
-      const exNote = (se.weekly && se.exClass) ? ` <span style="color:var(--warn)">本周临时 ${fmtDT(new Date(se.exClass))}</span>` : "";
+      const mode = sessionMode(se);
+      let clsTitle, revTxt, exNote = "";
+      if (mode === "days") {
+        const dayNames = (se.days || []).map(d => WEEK[d]).join("、");
+        clsTitle = `每周 ${dayNames} ${se.dayTime} 🔁`;
+        const offs = se.offsets || [];
+        revTxt = se.merged
+          ? `抗遗忘（合并）· 课后 ${offs[0] ?? "—"} 小时`
+          : `抗遗忘：课后 ${offs.map((o, i) => `${"①②③"[i]} ${o ?? "—"}h`).join(" / ")}`;
+      } else {
+        const revs = (se.reviews || []).map(parseDT);
+        revTxt = se.merged
+          ? `抗遗忘（合并）· ${fmtDT(revs[0])}`
+          : `抗遗忘：${revs.map((d, i) => `${"①②③"[i]} ${fmtTime(d)}`).join(" / ")}`;
+        clsTitle = mode === "weekly" ? (`每${WEEK[parseDT(se.classTime).getDay()]} ${fmtTime(parseDT(se.classTime))} 🔁`) : fmtDT(cls);
+        if (mode === "weekly" && se.exClass) exNote = ` <span style="color:var(--warn)">本周临时 ${fmtDT(new Date(se.exClass))}</span>`;
+      }
       html += `<div class="session-row">
         <div class="session-info">
           <div class="session-title">正课 ${clsTitle}${exNote}</div>
-          <div class="session-sub">${revTxt}${se.words ? " ｜ 单词 " + esc(se.words) : ""}</div>
+          <div class="session-sub">${revTxt}${se.words ? " ｜ 学词 " + esc(se.words) : ""}</div>
         </div>
         <div class="row-actions">
           <button class="mini-btn" data-edit-session="${se.id}">编辑</button>
@@ -362,7 +411,8 @@
     const st = id ? state.students.find(s => s.id === id) : null;
     $("#studentModalTitle").textContent = st ? "编辑学员" : "新增学员";
     $("#sf-name").value = st?.name || "";
-    $("#sf-spelling").value = st?.spelling || "";
+    $("#sf-words").value = st?.wordsPerLesson || "";
+    $("#sf-spellCheck").value = st?.spellCheck || "";
     $("#sf-reading").checked = !!st?.withReading;
     $("#sf-pron").checked = !!st?.emphasizePronunciation;
     $("#sf-feedback").checked = !!st?.needFeedback;
@@ -375,7 +425,8 @@
     if (!name) { toast("请填写姓名"); return; }
     const data = {
       name,
-      spelling: $("#sf-spelling").value.trim(),
+      wordsPerLesson: $("#sf-words").value.trim(),
+      spellCheck: $("#sf-spellCheck").value.trim(),
       withReading: $("#sf-reading").checked,
       emphasizePronunciation: $("#sf-pron").checked,
       needFeedback: $("#sf-feedback").checked,
@@ -391,6 +442,25 @@
   }
 
   // 课次
+  function setSessionMode(mode) {
+    $all("#ss-mode .seg-btn").forEach(b => b.classList.toggle("active", b.dataset.mode === mode));
+    $("#ss-fields-once").classList.toggle("hidden", mode === "days");
+    $("#ss-fields-days").classList.toggle("hidden", mode !== "days");
+    $("#ss-once-hint").hidden = mode !== "weekly";
+    syncMergedDisabled();
+  }
+  function syncMergedDisabled() {
+    const m = $("#ss-merged").checked;
+    const mode = activeSessionMode();
+    if (mode === "days") {
+      $("#ss-d1").disabled = m; $("#ss-d2").disabled = m;
+    } else {
+      $("#ss-r1").disabled = m; $("#ss-r2").disabled = m;
+    }
+  }
+  function activeSessionMode() {
+    return $("#ss-mode .seg-btn.active")?.dataset.mode || "once";
+  }
   function openSessionModal(studentId, sessionId) {
     editingSession = { studentId, sessionId: sessionId || null };
     const st = state.students.find(s => s.id === studentId);
@@ -399,43 +469,75 @@
     // 默认正课时间：下一个整点
     const def = new Date(); def.setMinutes(0, 0, 0); def.setHours(def.getHours() + 1);
     const toLocal = d => { const p = n => String(n).padStart(2, "0"); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`; };
-    $("#ss-class").value = se?.classTime || toLocal(def);
-    $("#ss-r0").value = se?.reviews?.[0] || "";
-    $("#ss-r1").value = se?.reviews?.[1] || "";
-    $("#ss-r2").value = se?.reviews?.[2] || "";
+    // 重置表单
+    $all("#ss-mode .seg-btn").forEach(b => b.classList.remove("active"));
+    $all("#ss-days .chip").forEach(c => c.classList.remove("on"));
+    $("#ss-d0").value = ""; $("#ss-d1").value = ""; $("#ss-d2").value = "";
     $("#ss-merged").checked = !!se?.merged;
-    $("#ss-weekly").checked = !!se?.weekly;
     $("#ss-words").value = se?.words || "";
+    $("#ss-once-hint").hidden = true;
+    const mode = sessionId ? (se.mode || (se.weekly ? "weekly" : "once")) : "once";
+    setSessionMode(mode);
+    if (mode === "days") {
+      (se.days || []).forEach(d => $all(`#ss-days .chip`).forEach(c => { if (+c.dataset.d === d) c.classList.add("on"); }));
+      $("#ss-dayTime").value = se?.dayTime || "18:00";
+      const offs = se?.offsets || [];
+      $("#ss-d0").value = offs[0] ?? "";
+      $("#ss-d1").value = offs[1] ?? "";
+      $("#ss-d2").value = offs[2] ?? "";
+      $("#ss-class").value = se?.classTime || toLocal(def);
+      $("#ss-r0").value = se?.reviews?.[0] || "";
+      $("#ss-r1").value = se?.reviews?.[1] || "";
+      $("#ss-r2").value = se?.reviews?.[2] || "";
+    } else {
+      $("#ss-class").value = se?.classTime || toLocal(def);
+      $("#ss-r0").value = se?.reviews?.[0] || "";
+      $("#ss-r1").value = se?.reviews?.[1] || "";
+      $("#ss-r2").value = se?.reviews?.[2] || "";
+    }
+    syncMergedDisabled();
     openSheet("#sessionModal");
   }
   function saveSession() {
     const { studentId, sessionId } = editingSession;
     const st = state.students.find(s => s.id === studentId);
     if (!st) return;
-    const cls = $("#ss-class").value;
-    if (!cls) { toast("请填写正课时间"); return; }
-    const data = {
-      classTime: cls,
-      reviews: [$("#ss-r0").value, $("#ss-r1").value, $("#ss-r2").value],
-      merged: $("#ss-merged").checked,
-      weekly: $("#ss-weekly").checked,
-      words: $("#ss-words").value.trim()
-    };
-    if (sessionId) {
-      const se = st.sessions.find(x => x.id === sessionId);
-      if (data.weekly) {
-        const timesChanged = data.classTime !== se.classTime || JSON.stringify(data.reviews) !== JSON.stringify(se.reviews);
-        if (timesChanged) {
-          const onlyThisWeek = confirm("这是每周重复的课，你改了时间：\n\n【确定】仅本周临时改这一次\n【取消】以后每周都改成新时间");
-          if (onlyThisWeek) { se.exClass = data.classTime; se.exReviews = data.reviews; }
-          else { se.classTime = data.classTime; se.reviews = data.reviews; se.exClass = ""; se.exReviews = null; }
-        }
-        se.merged = data.merged; se.weekly = true; se.words = data.words;
-      } else {
-        Object.assign(se, data); se.exClass = ""; se.exReviews = null;
-      }
+    const mode = activeSessionMode();
+    const merged = $("#ss-merged").checked;
+    const words = $("#ss-words").value.trim();
+    if (mode === "days") {
+      const days = $all("#ss-days .chip.on").map(c => +c.dataset.d);
+      if (!days.length) { toast("请至少选择一个上课日"); return; }
+      const dayTime = $("#ss-dayTime").value;
+      if (!dayTime) { toast("请填写每天上课时间"); return; }
+      const offs = [0, 1, 2].map(i => {
+        const v = $(`#ss-d${i}`).value;
+        return v === "" ? null : Math.max(0, parseFloat(v));
+      });
+      const data = { mode: "days", days, dayTime, offsets: merged ? [offs[0]] : offs, merged, words };
+      if (sessionId) Object.assign(st.sessions.find(x => x.id === sessionId), data);
+      else st.sessions.push({ id: uid(), ...data });
     } else {
-      st.sessions.push({ id: uid(), ...data });
+      const cls = $("#ss-class").value;
+      if (!cls) { toast("请填写正课时间"); return; }
+      const reviews = [$("#ss-r0").value, merged ? "" : $("#ss-r1").value, merged ? "" : $("#ss-r2").value];
+      const data = { mode, classTime: cls, reviews, merged, words };
+      if (sessionId) {
+        const se = st.sessions.find(x => x.id === sessionId);
+        if (mode === "weekly") {
+          const timesChanged = data.classTime !== se.classTime || JSON.stringify(data.reviews) !== JSON.stringify(se.reviews);
+          if (timesChanged) {
+            const onlyThisWeek = confirm("这是每周重复的课，你改了时间：\n\n【确定】仅本周临时改这一次\n【取消】以后每周都改成新时间");
+            if (onlyThisWeek) { se.exClass = data.classTime; se.exReviews = data.reviews; }
+            else { se.classTime = data.classTime; se.reviews = data.reviews; se.exClass = ""; se.exReviews = null; }
+          }
+          se.merged = data.merged; se.weekly = true; se.mode = "weekly"; se.words = data.words;
+        } else {
+          Object.assign(se, data); se.exClass = ""; se.exReviews = null; se.weekly = false;
+        }
+      } else {
+        st.sessions.push({ id: uid(), ...data });
+      }
     }
     save(); renderStudents(); renderDetail(); renderToday(); pushSchedule(); closeAllSheets();
     toast(sessionId ? "课次已更新" : "课次已添加");
@@ -563,6 +665,21 @@
     $("#sf-save").addEventListener("click", saveStudent);
     $("#ss-save").addEventListener("click", saveSession);
 
+    // 排课方式切换
+    $all("#ss-mode .seg-btn").forEach(b => b.addEventListener("click", () => {
+      $all("#ss-mode .seg-btn").forEach(x => x.classList.remove("active"));
+      b.classList.add("active");
+      setSessionMode(b.dataset.mode);
+    }));
+    // 星期 chips 多选
+    $("#ss-days").addEventListener("click", e => {
+      const chip = e.target.closest(".chip");
+      if (!chip) return;
+      chip.classList.toggle("on");
+    });
+    // 抗遗忘合并互斥：合并开启时禁用另外两个时间
+    $("#ss-merged").addEventListener("change", syncMergedDisabled);
+
     // 学员卡片点击 -> 详情
     $("#studentList").addEventListener("click", e => {
       const card = e.target.closest("[data-open]");
@@ -669,7 +786,7 @@
     const plus = h => { const d = new Date(now); d.setHours(d.getHours() + h); const p = n => String(n).padStart(2, "0"); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`; };
     state.students.push({
       id: uid(), name: "示例学员·小明", color: ACCENTS[0],
-      spelling: "15 词", withReading: true, emphasizePronunciation: true, needFeedback: true,
+      wordsPerLesson: "20 词", spellCheck: "15 词", withReading: true, emphasizePronunciation: true, needFeedback: true,
       notes: "家长关注发音，每课要反馈。",
       sessions: [{
         id: uid(), classTime: plus(2),
