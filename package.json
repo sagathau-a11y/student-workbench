@@ -1,0 +1,17 @@
+{
+  "name": "student-workbench-push",
+  "version": "1.0.0",
+  "description": "学员管理工作台 PWA + Web Push 后端（关屏强推）",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "express": "^5.2.1",
+    "web-push": "^3.6.7"
+  }
+}

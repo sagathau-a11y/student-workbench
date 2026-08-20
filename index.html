@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no" />
+<meta name="theme-color" content="#3a80ff" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="学员工作台" />
+<title>学员管理工作台</title>
+<link rel="manifest" href="manifest.webmanifest" />
+<link rel="apple-touch-icon" href="icon-192.png" />
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<header class="appbar">
+  <div class="appbar-inner">
+    <h1 id="appTitle">学员工作台</h1>
+    <button id="btnNotify" class="ghost-btn" hidden>开启提醒</button>
+  </div>
+</header>
+
+<main id="view-students" class="view active">
+  <div class="toolbar">
+    <span class="muted" id="studentCount">0 位学员</span>
+    <div style="display:flex;gap:8px">
+      <button id="btnBulk" class="ghost-btn">批量导入</button>
+      <button id="btnAddStudent" class="primary-btn">+ 新增学员</button>
+    </div>
+  </div>
+  <div id="studentList" class="list"></div>
+  <p id="emptyStudents" class="empty">还没有学员。点「+ 新增学员」开始建档。</p>
+</main>
+
+<main id="view-today" class="view">
+  <div class="toolbar">
+    <span class="muted">今天及临近的课与复习</span>
+    <button id="btnRefreshToday" class="ghost-btn">刷新</button>
+  </div>
+  <div id="todayList" class="list"></div>
+  <p id="emptyToday" class="empty">近期没有排定的课或复习。</p>
+</main>
+
+<main id="view-settings" class="view">
+  <div class="card">
+    <h2>提醒设置</h2>
+    <label class="row">
+      <span>提前提醒（分钟）</span>
+      <input id="setLead" type="number" min="1" max="240" value="15" inputmode="numeric" />
+    </label>
+    <label class="row">
+      <span>每次事件重复提醒（次）</span>
+      <input id="setRepeat" type="number" min="1" max="5" value="1" inputmode="numeric" />
+    </label>
+    <label class="row switch-row">
+      <span>允许通知弹窗</span>
+      <span id="notifyState" class="muted">未授权</span>
+    </label>
+    <button id="btnTestNotify" class="primary-btn block">发送测试提醒</button>
+    <p class="hint">提示：本工作台为纯本地应用。App 在打开或后台时常驻时会准时弹通知；若手机完全息屏关闭，部分机型不触发，可用「今日」页随时查看临近安排作为兜底。</p>
+  </div>
+
+  <div class="card">
+    <h2>数据备份</h2>
+    <p class="hint">数据保存在本机浏览器。换手机或清缓存前请导出备份；导入会覆盖当前数据。</p>
+    <div class="btn-row">
+      <button id="btnExport" class="primary-btn">导出备份</button>
+      <button id="btnImport" class="ghost-btn">导入备份</button>
+    </div>
+    <input id="fileImport" type="file" accept="application/json" hidden />
+  </div>
+
+  <div class="card">
+    <h2>关于</h2>
+    <p class="hint">学员管理工作台 · 纯前端 PWA。可「添加到主屏幕」放在手机桌面，离线也能用。</p>
+    <p class="hint" id="installHint">在浏览器菜单选择「添加到主屏幕 / Add to Home Screen」即可。</p>
+  </div>
+</main>
+
+<!-- 底部导航 -->
+<nav class="tabbar">
+  <button class="tab active" data-view="students"><span class="ic">👥</span><span>学员</span></button>
+  <button class="tab" data-view="today"><span class="ic">🔔</span><span>今日</span></button>
+  <button class="tab" data-view="settings"><span class="ic">⚙️</span><span>设置</span></button>
+</nav>
+
+<!-- 新增/编辑学员 弹层 -->
+<div id="studentModal" class="sheet hidden">
+  <div class="sheet-backdrop" data-close></div>
+  <div class="sheet-panel">
+    <div class="sheet-head">
+      <h2 id="studentModalTitle">新增学员</h2>
+      <button class="icon-btn" data-close>✕</button>
+    </div>
+    <div class="sheet-body">
+      <label class="field">
+        <span>姓名 <i>*</i></span>
+        <input id="sf-name" type="text" placeholder="学员姓名" />
+      </label>
+      <label class="field">
+        <span>拼写量</span>
+        <input id="sf-spelling" type="text" placeholder="如 20 词 / 课内带拼" />
+      </label>
+      <label class="field switch">
+        <span>带阅读</span>
+        <input id="sf-reading" type="checkbox" class="switch-input" />
+      </label>
+      <label class="field switch">
+        <span>重视发音</span>
+        <input id="sf-pron" type="checkbox" class="switch-input" />
+      </label>
+      <label class="field switch">
+        <span>需要课后反馈</span>
+        <input id="sf-feedback" type="checkbox" class="switch-input" />
+      </label>
+      <label class="field">
+        <span>备注</span>
+        <textarea id="sf-notes" rows="2" placeholder="其他特殊需求…"></textarea>
+      </label>
+    </div>
+    <div class="sheet-foot">
+      <button class="ghost-btn" data-close>取消</button>
+      <button id="sf-save" class="primary-btn">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- 课次 弹层 -->
+<div id="sessionModal" class="sheet hidden">
+  <div class="sheet-backdrop" data-close></div>
+  <div class="sheet-panel">
+    <div class="sheet-head">
+      <h2 id="sessionModalTitle">添加课次</h2>
+      <button class="icon-btn" data-close>✕</button>
+    </div>
+    <div class="sheet-body">
+      <label class="field">
+        <span>正课时间 <i>*</i></span>
+        <input id="ss-class" type="datetime-local" />
+      </label>
+      <label class="field">
+        <span>抗遗忘 ①</span>
+        <input id="ss-r0" type="datetime-local" />
+      </label>
+      <label class="field">
+        <span>抗遗忘 ②</span>
+        <input id="ss-r1" type="datetime-local" />
+      </label>
+      <label class="field">
+        <span>抗遗忘 ③</span>
+        <input id="ss-r2" type="datetime-local" />
+      </label>
+      <label class="field switch">
+        <span>抗遗忘合并（三次合一）</span>
+        <input id="ss-merged" type="checkbox" class="switch-input" />
+      </label>
+      <label class="field switch">
+        <span>每周重复（自动顺延到下周）</span>
+        <input id="ss-weekly" type="checkbox" class="switch-input" />
+      </label>
+      <label class="field">
+        <span>本节课单词量</span>
+        <input id="ss-words" type="text" placeholder="如 15 个" inputmode="numeric" />
+      </label>
+    </div>
+    <div class="sheet-foot">
+      <button class="ghost-btn" data-close>取消</button>
+      <button id="ss-save" class="primary-btn">保存课次</button>
+    </div>
+  </div>
+</div>
+
+<!-- 学员详情 弹层 -->
+<div id="detailModal" class="sheet hidden">
+  <div class="sheet-backdrop" data-close></div>
+  <div class="sheet-panel">
+    <div class="sheet-head">
+      <h2 id="detailName">学员</h2>
+      <button class="icon-btn" data-close>✕</button>
+    </div>
+    <div class="sheet-body" id="detailBody"></div>
+    <div class="sheet-foot">
+      <button id="detail-del" class="danger-btn">删除学员</button>
+      <button id="detail-edit" class="ghost-btn">编辑档案</button>
+      <button id="detail-add-session" class="primary-btn">+ 课次</button>
+    </div>
+  </div>
+</div>
+
+<!-- 批量导入 弹层 -->
+<div id="bulkModal" class="sheet hidden">
+  <div class="sheet-backdrop" data-close></div>
+  <div class="sheet-panel">
+    <div class="sheet-head">
+      <h2>批量导入学员</h2>
+      <button class="icon-btn" data-close>✕</button>
+    </div>
+    <div class="sheet-body">
+      <p class="hint">每行一位学员，用逗号分隔（中文逗号也行）。列顺序固定：</p>
+      <p class="hint" style="font-family:monospace;user-select:all">姓名, 正课, 抗遗忘1, 抗遗忘2, 抗遗忘3, 合并, 单词量, 拼写量, 带阅读, 重发音, 要反馈, 备注, 每周重复(可选)</p>
+      <p class="hint">时间可写「周三 15:00」（自动取本周/下个周三）或「2026-03-20 15:00」；合并/阅读/发音/反馈写「是」或「否」。空白列留空即可。示例：</p>
+      <p class="hint" style="font-family:monospace;user-select:all">小明, 周三 15:00, 周三 18:00, 周四 18:00, 周五 18:00, 否, 20, 15, 是, 是, 是, 家长关注发音</p>
+      <textarea id="bk-text" rows="9" placeholder="把学员信息粘贴到这里，每行一位…" style="width:100%;background:var(--surface-2);border:1px solid var(--line);color:var(--text);border-radius:10px;padding:11px;font-size:14px;font-family:inherit;line-height:1.6"></textarea>
+    </div>
+    <div class="sheet-foot">
+      <button class="ghost-btn" data-close>取消</button>
+      <button id="bk-save" class="primary-btn">解析并导入</button>
+    </div>
+  </div>
+</div>
+
+<!-- 轻提示 -->
+<div id="toast" class="toast hidden"></div>
+
+<script src="app.js"></script>
+</body>
+</html>

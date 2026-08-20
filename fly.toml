@@ -1,0 +1,21 @@
+# Fly.io 部署配置：常驻 1 台 + 强制 HTTPS（保证关屏强推不中断）
+# 说明：app 名称先留空，运行 `fly launch` 时会帮你生成/填写一个全球唯一名字。
+primary_region = "hkg"          # 香港节点，离国内近、速度快；也可改 "sin"(新加坡) 或 "nrt"(东京)
+
+[build]
+  # 使用 Dockerfile 构建（目录里的 Dockerfile）
+
+[env]
+  PORT = "3000"
+
+[http_service]
+  internal_port = 3000
+  force_https = true            # 强制跳转 HTTPS（Web Push 必须安全上下文）
+  auto_stop_machines = "off"    # 不自动休眠
+  auto_start_machines = true
+  min_machines_running = 1      # 常驻 1 台，保证调度器一直在跑
+
+[[vm]]
+  memory = "256mb"
+  cpu_kind = "shared"
+  cpus = 1
